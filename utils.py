@@ -1,5 +1,4 @@
 import numpy as np
-from tqdm import tqdm
 
 
 def map_label_to_index(label):
@@ -14,7 +13,7 @@ def map_label_to_index(label):
 
 def single_array_to_matrix(x):
     output = np.empty(shape=(4,4))
-    for i in tqdm(range(x.shape[0])):
+    for i in range(x.shape[0]):
         for j in range(x.shape[1]-1):
             previous = map_label_to_index(x[i,j])
             after = map_label_to_index(x[i,j+1])
