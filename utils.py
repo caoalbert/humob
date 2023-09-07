@@ -18,7 +18,7 @@ def single_array_to_matrix(x):
             previous = map_label_to_index(x[i,j])
             after = map_label_to_index(x[i,j+1])
             output[previous, after] += 1
-    output = output / output.sum(axis = 1)
+    output = output / output.sum(axis = 1, keepdims=True)
 
     return output
 
