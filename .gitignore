@@ -1,3 +1,5 @@
-*.csv
+task1_dataset.csv
+task2_dataset.csv
+cell_POIcat.csv
 task1/
 __pycache__/
