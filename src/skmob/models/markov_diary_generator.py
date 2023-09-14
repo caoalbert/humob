@@ -12,6 +12,10 @@ longitude = constants.LONGITUDE
 date_time = constants.DATETIME
 user_id = constants.UID
 
+class HomeWorkError(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(self.message)
 
 class MarkovDiaryGenerator:
     """Markov Diary Learner and Generator.
@@ -167,6 +171,13 @@ class MarkovDiaryGenerator:
         HOME = max(a, key=lambda k: a[k])
         a, b = self._get_location2frequency(traj[(traj['hr'] < 19) & (traj['hr'] > 7)], location_column=lid)
         WORK = max(a, key=lambda k: a[k])
+
+   
+        if HOME == WORK:
+            raise HomeWorkError('The user has the same home and work location. Use the unmodified DITRAS model')
+
+
+        
 
         return HOME, WORK
 
@@ -386,6 +397,8 @@ class MarkovDiaryGenerator:
 
         # normalize the markov chain, i.e., normalize the transitions by row
         self._normalize_markov_chain()
+
+        # if self._markov_chain_['']
 
     @staticmethod
     def _weighted_random_selection(weights):
