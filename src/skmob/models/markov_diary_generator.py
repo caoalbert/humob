@@ -170,9 +170,11 @@ class MarkovDiaryGenerator:
         a, b = self._get_location2frequency(traj[(traj['hr'] <= 7) | (traj['hr'] >= 19)], location_column=lid)
         HOME = max(a, key=lambda k: a[k])
         a, b = self._get_location2frequency(traj[(traj['hr'] < 19) & (traj['hr'] > 7)], location_column=lid)
+
+        if a == None:
+            raise HomeWorkError('The user has no work location identified. Use the unmodified DITRAS model')
         WORK = max(a, key=lambda k: a[k])
 
-   
         if HOME == WORK:
             raise HomeWorkError('The user has the same home and work location. Use the unmodified DITRAS model')
 
