@@ -161,11 +161,11 @@ class MarkovDiaryGenerator:
         return location2frequency, location2rank
     
 
-    def _home_work_detection(self, traj_df, lid):
-        traj_df['hr'] = traj_df['datetime'].apply(lambda x: x.hour)
-        a, b = self._get_location2frequency(traj_df[(traj_df['hr'] <= 7) | (traj_df['hr'] >= 19)], location_column=lid)
+    def _home_work_detection(self, traj, lid):
+        traj['hr'] = traj['datetime'].apply(lambda x: x.hour)
+        a, b = self._get_location2frequency(traj[(traj['hr'] <= 7) | (traj['hr'] >= 19)], location_column=lid)
         HOME = max(a, key=lambda k: a[k])
-        a, b = self._get_location2frequency(traj_df[(traj_df['hr'] < 19) & (traj_df['hr'] > 7)], location_column=lid)
+        a, b = self._get_location2frequency(traj[(traj['hr'] < 19) & (traj['hr'] > 7)], location_column=lid)
         WORK = max(a, key=lambda k: a[k])
 
         return HOME, WORK
@@ -376,13 +376,11 @@ class MarkovDiaryGenerator:
 
             for individual in individuals[:n_individuals]:
 
+                HOME, WORK = self._home_work_detection(traj, lid='cluster_id') # Detect home and work first so that the time series is correctly labeled
                 # create the time series of the individual
-                time_series, shift = self._create_time_series(traj[traj.uid == individual], lid=lid) # start_date, end_date,
-
-                HOME, WORK = self._home_work_detection(self, traj[traj.uid == individual], lid=lid) # Detect home and work first so that the time series is correctly labeled
-
+                time_series, shift = self._create_time_series(traj, HOME, WORK, lid) # start_date, end_date,
                 # update the markov chain according to the individual's time series
-                self._update_markov_chain(time_series, shift, HOME, WORK)
+                self._update_markov_chain(time_series, shift)
 
                 pbar.update(1)
 
