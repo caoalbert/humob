@@ -76,12 +76,10 @@ class MarkovDiaryGenerator:
     --------
     Ditras
     """
-    def __init__(self, home, work, name='Markov diary'):
+    def __init__(self, name='Markov diary'):
         self._markov_chain_ = None
         self._time_slot_length = '1h'
         self._name = name
-        self.home = home
-        self.work = work
 
     @property
     def markov_chain_(self):
@@ -198,8 +196,18 @@ class MarkovDiaryGenerator:
         traj = traj.groupby(pd.Grouper(freq=self._time_slot_length, closed='left')).aggregate(lambda x: ','.join(x)).replace('', np.nan)
     
         # compute the frequency of every location visited by the individual
-        location2frequency, location2rank = self._get_location2frequency(traj, location_column=lid)
+        location2frequency, location2rank = self._get_location2frequency(traj[-traj[lid].isin([home, work])], location_column=lid)
+        location2rank = {key: value + 2 for key, value in location2rank.items()}
 
+        home_freq = traj[traj[lid]==home].shape[0]
+        work_freq = traj[traj[lid]==work].shape[0]
+
+        location2frequency[home] = home_freq
+        location2frequency[work] = work_freq
+
+        location2rank[home] = 1
+        location2rank[work] = 2
+    
         # select the location for every slot
         # ix = pd.DatetimeIndex(start=start_date, end=end_date, freq=self._time_slot_length)
         #ix = pd.date_range(start=start_date, end=end_date, freq=self._time_slot_length)
