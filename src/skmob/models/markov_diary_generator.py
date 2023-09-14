@@ -76,10 +76,12 @@ class MarkovDiaryGenerator:
     --------
     Ditras
     """
-    def __init__(self, name='Markov diary'):
+    def __init__(self, home, work, name='Markov diary'):
         self._markov_chain_ = None
         self._time_slot_length = '1h'
         self._name = name
+        self.home = home
+        self.work = work
 
     @property
     def markov_chain_(self):
@@ -100,9 +102,9 @@ class MarkovDiaryGenerator:
         """
         self._markov_chain_ = defaultdict(lambda: defaultdict(float))
         for h1 in range(0, 24):
-            for r1 in [0, 1]:
+            for r1 in [0, 1, 2]:
                 for h2 in range(0, 24):
-                    for r2 in [0, 1]:
+                    for r2 in [0, 1, 2]:
                         self._markov_chain_[(h1, r1)][(h2, r2)] = 0.0
 
     @staticmethod
@@ -159,8 +161,18 @@ class MarkovDiaryGenerator:
             location2rank[location] = rank
             rank += 1
         return location2frequency, location2rank
+    
 
-    def _create_time_series(self, traj, lid='location'):#start_date, end_date, lid='location'):
+    def _home_work_detection(self, traj_df, lid):
+        traj_df['hr'] = traj_df['datetime'].apply(lambda x: x.hour)
+        a, b = self._get_location2frequency(traj_df[(traj_df['hr'] <= 7) | (traj_df['hr'] >= 19)], location_column=lid)
+        HOME = max(a, key=lambda k: a[k])
+        a, b = self._get_location2frequency(traj_df[(traj_df['hr'] < 19) & (traj_df['hr'] > 7)], location_column=lid)
+        WORK = max(a, key=lambda k: a[k])
+
+        return HOME, WORK
+
+    def _create_time_series(self, traj, home, work, lid='location'):#start_date, end_date, lid='location'):
         """
         Parameters
         ----------
@@ -184,8 +196,7 @@ class MarkovDiaryGenerator:
         traj[lid] = traj[lid].astype('str')
         # enlarge (eventually) the time series with the specified freq (replace empty time slots with NaN)
         traj = traj.groupby(pd.Grouper(freq=self._time_slot_length, closed='left')).aggregate(lambda x: ','.join(x)).replace('', np.nan)
-
-
+    
         # compute the frequency of every location visited by the individual
         location2frequency, location2rank = self._get_location2frequency(traj, location_column=lid)
 
@@ -200,7 +211,10 @@ class MarkovDiaryGenerator:
 
         # you can use location2frequency to assign a number to every location
         time_series = time_series.apply(lambda x: location2rank[x])
+
         return time_series, shift
+    
+
 
     def _update_markov_chain(self, time_series, shift=0):
         """
@@ -212,7 +226,10 @@ class MarkovDiaryGenerator:
             time series of abstract locations visisted by an individual.
         """
         HOME = 1
-        TYPICAL, NON_TYPICAL = 1, 0
+        WORK = 2
+
+        # TYPICAL, NON_TYPICAL = 1, 0
+        TYPICAL_WORK, TYPICAL_HOME, NON_TYPICAL = 2, 1, 0
 
         n = len(time_series)  # n is the length of the time series of the individual
         slot = 0  # it starts from the first slot in the time series
@@ -232,14 +249,14 @@ class MarkovDiaryGenerator:
                 if next_loc_h == HOME:  # if \delta(d_{h + 1}, t_{h + 1}) == 1
 
                     # we are in Type1: (h, 1) --> (h + 1, 1)
-                    self._markov_chain_[(h, TYPICAL)][(next_h, TYPICAL)] += 1
-
+                    self._markov_chain_[(h, TYPICAL_HOME)][(next_h, TYPICAL_HOME)] += 1
+                elif next_loc_h == WORK:
+                    # we are in Type2: (h, 1) --> (h + 1, 1)
+                    self._markov_chain_[(h, TYPICAL_HOME)][(next_h, TYPICAL_WORK)] += 1
                 else:  # she will be not in the typical location
-
                     # we are in Type2: (h, 1) --> (h + tau, 0)
                     tau = 1
                     if slot + 2 < n:  # if slot is the second last in the time series
-
                         for j in range(slot + 2, n):  # in slot + 1 we do not have HOME so we start from slot + 2
                             loc_hh = time_series[j]
                             if loc_hh == next_loc_h:  # if \delta(d_{h + j}, d_{h + 1}) == 1
@@ -249,7 +266,34 @@ class MarkovDiaryGenerator:
 
                         h_tau = (h + tau) % 24
                         # update the state of edge (h, 1) --> (h + tau, 0)
-                        self._markov_chain_[(h, TYPICAL)][(h_tau, NON_TYPICAL)] += 1
+                        self._markov_chain_[(h, TYPICAL_HOME)][(h_tau, NON_TYPICAL)] += 1
+                        slot = j - 2 #1
+
+                    else:  # terminate the while cycle
+                        slot = n
+
+            elif loc_h == WORK:
+                # we have two cases
+                if next_loc_h == WORK:  # if \delta(d_{h + 1}, t_{h + 1}) == 1
+                    # we are in Type1: (h, 1) --> (h + 1, 1)
+                    self._markov_chain_[(h, TYPICAL_WORK)][(next_h, TYPICAL_WORK)] += 1
+                elif next_loc_h == HOME:
+                    # we are in Type2: (h, 1) --> (h + 1, 1)
+                    self._markov_chain_[(h, TYPICAL_WORK)][(next_h, TYPICAL_HOME)] += 1
+                else:  # she will be not in the typical location
+                    # we are in Type2: (h, 1) --> (h + tau, 0)
+                    tau = 1
+                    if slot + 2 < n:  # if slot is the second last in the time series
+                        for j in range(slot + 2, n):  # in slot + 1 we do not have HOME so we start from slot + 2
+                            loc_hh = time_series[j]
+                            if loc_hh == next_loc_h:  # if \delta(d_{h + j}, d_{h + 1}) == 1
+                                tau += 1
+                            else:
+                                break
+
+                        h_tau = (h + tau) % 24
+                        # update the state of edge (h, 1) --> (h + tau, 0)
+                        self._markov_chain_[(h, TYPICAL_WORK)][(h_tau, NON_TYPICAL)] += 1
                         slot = j - 2 #1
 
                     else:  # terminate the while cycle
@@ -260,7 +304,10 @@ class MarkovDiaryGenerator:
                 if next_loc_h == HOME:  # if \delta(d_{h + 1}, t_{h + 1}) == 1, i.e., she will stay at home
 
                     # we are in Type3: (h, 0) --> (h + 1, 1)
-                    self._markov_chain_[(h, NON_TYPICAL)][(next_h, TYPICAL)] += 1
+                    self._markov_chain_[(h, NON_TYPICAL)][(next_h, TYPICAL_HOME)] += 1
+
+                elif next_loc_h == WORK:
+                    self._markov_chain_[(h, NON_TYPICAL)][(next_h, TYPICAL_WORK)] += 1
 
                 else:
 
@@ -313,7 +360,7 @@ class MarkovDiaryGenerator:
         lid : string, optional
             the name of the column containing the identifier of the location. The default is "location".
         """
-        
+
         self._create_empty_markov_chain()  # initialize the markov chain
 
         individuals = traj.uid.unique()  # list of individuals' identifiers
@@ -324,8 +371,10 @@ class MarkovDiaryGenerator:
                 # create the time series of the individual
                 time_series, shift = self._create_time_series(traj[traj.uid == individual], lid=lid) # start_date, end_date,
 
+                HOME, WORK = self._home_work_detection(self, traj[traj.uid == individual], lid=lid) # Detect home and work first so that the time series is correctly labeled
+
                 # update the markov chain according to the individual's time series
-                self._update_markov_chain(time_series, shift)
+                self._update_markov_chain(time_series, shift, HOME, WORK)
 
                 pbar.update(1)
 
